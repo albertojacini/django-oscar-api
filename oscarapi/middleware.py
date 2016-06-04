@@ -1,6 +1,7 @@
 import logging
 import re
 
+from django.conf import settings
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import PermissionDenied
 from django.core.urlresolvers import reverse
@@ -219,9 +220,21 @@ class ApiBasketMiddleWare(BasketMiddleware, IsApiRequest):
             # because it is enforced in process_request.
             # We just have to make sure it is stored as a cookie, because it
             # could have been created by oscarapi.
-            cookie_key = self.get_cookie_key(request)
+            cookie_key = self.get_cookie_key(request)  # Oscar default is 'oscar_open_basket'
             basket = get_basket(request)
-            request.COOKIES[cookie_key] = self.get_basket_hash(basket.id)
+            cookie = self.get_basket_hash(basket.id)
 
-        return super(
-            ApiBasketMiddleWare, self).process_response(request, response)
+            # Delete any surplus cookies
+            cookies_to_delete = getattr(request, 'cookies_to_delete', [])
+            for cookie_key in cookies_to_delete:
+                response.delete_cookie(cookie_key)
+
+            if not request.user.is_authenticated():
+                response.set_cookie(
+                    cookie_key, cookie,
+                    max_age=settings.OSCAR_BASKET_COOKIE_LIFETIME,
+                    secure=settings.OSCAR_BASKET_COOKIE_SECURE, httponly=True)
+            return response
+        else:
+            return super(
+                ApiBasketMiddleWare, self).process_response(request, response)
